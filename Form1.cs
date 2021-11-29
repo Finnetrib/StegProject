@@ -18,6 +18,10 @@ namespace StegProject
             InitializeComponent();
         }
 
+        const int ENCRYP_PESENT_SIZE = 1;
+        const int ENCRYP_TEXT_SIZE = 3;
+        const int ENCRYP_TEXT_MAX_SIZE = 999;
+
         private BitArray ByteToBit(byte src) {
             BitArray bitArray = new BitArray(8);
             bool st = false;
@@ -67,13 +71,38 @@ namespace StegProject
             else return false;
         }
 
+        /*Нормализует количество символов для шифрования,чтобы они всегда занимали ENCRYP_TEXT_SIZE байт*/
+        private byte[] NormalizeWriteCount(byte[] CountSymbols)
+        {
+            int PaddingByte = ENCRYP_TEXT_SIZE - CountSymbols.Length;
+
+            byte[] WriteCount = new byte[ENCRYP_TEXT_SIZE];
+
+            for (int j = 0; j < PaddingByte; j++)
+            {
+                WriteCount[j] = 0x30;
+            }
+
+            for (int j = PaddingByte; j < ENCRYP_TEXT_SIZE; j++)
+            {
+                WriteCount[j] = CountSymbols[j - PaddingByte];
+            }
+            return WriteCount;
+        }
+
         /*Записыает количество символов для шифрования в первые биты картинки */
         private void WriteCountText(int count, Bitmap src) {
             byte[] CountSymbols = Encoding.GetEncoding(1251).GetBytes(count.ToString());
-            for (int i = 0; i < 3; i++)
+            
+            if (CountSymbols.Length < ENCRYP_TEXT_SIZE)
+            {
+                CountSymbols = NormalizeWriteCount(CountSymbols);
+            }
+            
+            for (int i = 0; i < ENCRYP_TEXT_SIZE; i++) 
             {
                 BitArray bitCount = ByteToBit(CountSymbols[i]); //биты количества символов
-                Color pColor = src.GetPixel(0, i + 1); //1, 2, 3 пикселы
+                Color pColor = src.GetPixel(0, i + 1);
                 BitArray bitsCurColor = ByteToBit(pColor.R); //бит цветов текущего пикселя
                 bitsCurColor[0] = bitCount[0];
                 bitsCurColor[1] = bitCount[1];
@@ -98,10 +127,10 @@ namespace StegProject
 
         /*Читает количество символов для дешифрования из первых бит картинки*/
         private int ReadCountText(Bitmap src) {
-            byte[] rez = new byte[3]; //массив на 3 элемента, т.е. максимум 999 символов шифруется
-            for (int i = 0; i < 3; i++)
-            { 
-                Color color = src.GetPixel(0, i + 1); //цвет 1, 2, 3 пикселей 
+            byte[] rez = new byte[ENCRYP_TEXT_SIZE]; 
+            for (int i = 0; i < ENCRYP_TEXT_SIZE; i++)
+            {
+                Color color = src.GetPixel(0, i + 1); 
                 BitArray colorArray = ByteToBit(color.R); //биты цвета
                 BitArray bitCount = ByteToBit(color.R); ; //инициализация результирующего массива бит
                 bitCount[0] = colorArray[0];
@@ -183,7 +212,14 @@ namespace StegProject
             bText.Close();
             rFile.Close();
 
-            //проверяем, поместиться ли исходный текст в картинке
+            //проверям, что размер не выходит за рамки максимального, поскольку для хранения размера используется
+            //ограниченное количество байт
+            if (CountText > (ENCRYP_TEXT_MAX_SIZE - ENCRYP_PESENT_SIZE - ENCRYP_TEXT_SIZE)) {
+                MessageBox.Show("Размер текста велик для данного алгоритма, уменьшите размер", "Информация", MessageBoxButtons.OK);
+                return;
+            }
+
+            //проверяем, поместится ли исходный текст в картинке
             if (CountText > (bPic.Width * bPic.Height)) {
                 MessageBox.Show("Выбранная картинка мала для размещения выбранного текста", "Информация", MessageBoxButtons.OK);
                 return;
@@ -224,7 +260,7 @@ namespace StegProject
 
             int index = 0;
             bool st = false;
-            for (int i = 4; i < bPic.Width; i++) { 
+            for (int i = ENCRYP_TEXT_SIZE + 1; i < bPic.Width; i++) { 
                 for (int j = 0; j < bPic.Height; j++) {
                     Color pixelColor = bPic.GetPixel(i, j);
                     if (index == bList.Count) {
@@ -316,6 +352,7 @@ namespace StegProject
             Bitmap bPic = new Bitmap(rFile);
             if (!isEncryption(bPic)) {
                 MessageBox.Show("В файле нет зашифрованной информации", "Информация", MessageBoxButtons.OK);
+                rFile.Close();
                 return;
             }
 
@@ -323,7 +360,7 @@ namespace StegProject
             byte[] message = new byte[countSymbol];
             int index = 0;
             bool st = false;
-            for (int i = 4; i < bPic.Width; i++) {
+            for (int i = ENCRYP_TEXT_SIZE + 1; i < bPic.Width; i++) {
                 for (int j = 0; j < bPic.Height; j++) {
                     Color pixelColor = bPic.GetPixel(i, j);
                     if (index == message.Length) {
@@ -363,6 +400,7 @@ namespace StegProject
             else
             {
                 sFileText = "";
+                rFile.Close();
                 return;
             };
 
@@ -374,6 +412,7 @@ namespace StegProject
             catch (IOException)
             {
                 MessageBox.Show("Ошибка открытия файла на запись", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                rFile.Close();
                 return;
             }
             StreamWriter wText = new StreamWriter(wFile, Encoding.Default);
@@ -381,7 +420,7 @@ namespace StegProject
             MessageBox.Show("Текст записан в файл", "Информация", MessageBoxButtons.OK);
             wText.Close();
             wFile.Close(); //закрываем поток
-
+            rFile.Close();
         }
     }
 }
